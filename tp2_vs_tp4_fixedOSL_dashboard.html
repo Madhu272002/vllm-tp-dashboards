@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TP2 vs TP4 - Fixed OSL 1024 - LLaVA-1.5-7B</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root { --tp2:#1e3a8a; --tp4:#f97316; --bg:#f8fafc; --card:#fff; --text:#1e293b; --muted:#64748b; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); padding:28px; }
+    .header { text-align:center; margin-bottom:24px; padding-bottom:20px; border-bottom:1px solid #e2e8f0; }
+    .header h1 { font-size:1.7rem; font-weight:700; }
+    .header p { color:var(--muted); font-size:.9rem; margin-top:6px; }
+    .executive-summary { max-width:1500px; margin:0 auto 26px; background:#f1f5f9; border-left:4px solid #3b82f6; border-radius:8px; padding:24px; }
+    .executive-summary h2 { font-size:18px; font-weight:600; margin-bottom:16px; color:#1e293b; }
+    .exec-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    .exec-item { color:#475569; font-size:14px; line-height:1.6; }
+    .exec-item strong { color:#1e293b; font-weight:600; }
+    .color-legend { max-width:1500px; margin:0 auto 18px; display:flex; justify-content:center; gap:20px; font-size:.85rem; color:var(--text); }
+    .color-legend > span { display:inline-flex; align-items:center; gap:6px; }
+    .color-legend .swatch { width:14px; height:14px; border-radius:3px; }
+    .grid { max-width:1500px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+    .chart-container { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); height:250px; }
+    canvas { width:100% !important; height:100% !important; }
+    table { max-width:1500px; margin:30px auto 0; width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:.8rem; }
+    th, td { padding:9px 10px; text-align:right; border-bottom:1px solid #e2e8f0; font-variant-numeric:tabular-nums; transition:background .12s; }
+    th:first-child, td:first-child { text-align:left; }
+    thead th { background:#f1f5f9; font-weight:600; }
+    tbody tr:nth-child(even) { background:#f8fafc; }
+    tbody tr:hover { background:#eef2ff; }
+    @media (max-width:1300px) { .grid { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:700px) { .grid { grid-template-columns:1fr; } }
+    .footer { max-width:1500px; margin:24px auto 0; text-align:center; font-size:.75rem; color:var(--muted); padding:12px; border-top:1px solid #e2e8f0; }
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>TP2 vs TP4 &mdash; Fixed OSL 1024</h1>
+    <p>LLaVA-1.5-7B &middot; vLLM &middot; NVIDIA A100-PCIE-40GB &middot; ISL 100 tokens &middot; image 336&times;336</p>
+</div>
+<div class="color-legend">
+    <span><span class="swatch" style="background:var(--tp2)"></span> TP2 (2 GPUs)</span>
+    <span><span class="swatch" style="background:var(--tp4)"></span> TP4 (4 GPUs)</span>
+</div>
+<div class="executive-summary">
+    <h2>Executive Summary</h2>
+    <div class="exec-grid" id="execGrid"></div>
+</div>
+<div class="grid">
+        <div class="chart-container"><canvas id="c_out_tput"></canvas></div>
+        <div class="chart-container"><canvas id="c_total_tput"></canvas></div>
+        <div class="chart-container"><canvas id="c_tput_per_gpu"></canvas></div>
+        <div class="chart-container"><canvas id="c_out_tput_user"></canvas></div>
+        <div class="chart-container"><canvas id="c_e2e_tput_user"></canvas></div>
+        <div class="chart-container"><canvas id="c_prefill_tput_user"></canvas></div>
+        <div class="chart-container"><canvas id="c_ttft_avg"></canvas></div>
+        <div class="chart-container"><canvas id="c_ttft_p99"></canvas></div>
+        <div class="chart-container"><canvas id="c_itl_avg"></canvas></div>
+        <div class="chart-container"><canvas id="c_itl_p99"></canvas></div>
+        <div class="chart-container"><canvas id="c_lat_avg"></canvas></div>
+        <div class="chart-container"><canvas id="c_lat_p99"></canvas></div>
+        <div class="chart-container"><canvas id="c_image_tput"></canvas></div>
+        <div class="chart-container"><canvas id="c_req_tput"></canvas></div>
+        <div class="chart-container"><canvas id="c_osl_avg"></canvas></div>
+        <div class="chart-container"><canvas id="c_osl_min"></canvas></div>
+        <div class="chart-container"><canvas id="c_osl_max"></canvas></div>
+        <div class="chart-container"><canvas id="c_isl_avg"></canvas></div>
+        <div class="chart-container"><canvas id="c_gpu_power_active"></canvas></div>
+        <div class="chart-container"><canvas id="c_gpu_mem_gb"></canvas></div>
+        <div class="chart-container"><canvas id="c_gpu_util"></canvas></div>
+        <div class="chart-container"><canvas id="c_sm_util"></canvas></div>
+        <div class="chart-container"><canvas id="c_tok_per_joule"></canvas></div>
+        <div class="chart-container"><canvas id="c_duration"></canvas></div>
+</div>
+<table id="table"></table>
+<div class="footer">Generated by PowerShell &middot; LLaVA-1.5-7B fixed-OSL benchmark &middot; TP2 vs TP4</div>
+<script>
+const D = {"tp2":{"lat_avg":[8711.74,9204.45,10292.89,13773.15,18652.2,27080.53,43865.32,103377.57,213169.17],"tput_per_gpu":[58.66,110.92,198.49,296.92,438.28,604.04,745.66,627.04,604.69],"out_tput_user":[120,114.32,104.7,79.31,59.51,40.44,24.29,12.61,10.7],"gpu_util":[98.41,98.57,98.6,98.86,99.22,99.86,99.87,99.96,99.98],"e2e_tput_user":[117.57,111.18,99.49,74.39,54.9,37.83,23.37,10.31,4.93],"osl_min":[1004,981,1001,1007,964,985,717,379,832],"osl_max":[1032,1028,1026,1029,1026,1036,1078,1058,1045],"prefill_tput_user":[541.93,416.07,246.81,160.13,102.43,73.97,70.8,12,1.33],"total_tput":[128.78,243.52,435.76,651.85,962.19,1326.12,1637.07,1376.65,1327.56],"active_gpus":[2,2,2,2,2,2,2,2,2],"image_tput":[0.11,0.11,0.1,0.07,0.05,0.04,0.02,0.01,0],"itl_avg":[8.33,8.75,9.55,12.62,16.82,24.74,41.2,84.2,99.6],"ttft_avg":[184.9,260.76,518.74,859.28,1440.71,1765.71,1722.35,17243.27,111266.8],"itl_p99":[8.44,9.04,9.88,13.28,18.05,26.23,42.6,127.54,141.38],"out_tput":[117.31,221.83,396.98,593.85,876.55,1208.08,1491.31,1254.07,1209.38],"duration":[873.05,461.33,257.96,276.04,373.83,542.57,878.81,2090.27,4335.79],"gpu_mem_gb":[40.89,40.89,40.89,40.89,40.89,40.89,40.89,40.89,40.89],"sm_util":[96.77,96.56,95.88,95.97,97.16,97.7,98.13,98.63,98.82],"osl_avg":[1024.2,1023.37,1024.04,1024.52,1023.99,1024.17,1023.89,1023.97,1024.15],"lat_p99":[8736.38,9243.59,10335.15,13846.14,18968.91,28916.87,49787.39,141073.95,241219.55],"gpu_power_active":[468.12,461.49,463.42,446.5,455.78,461.18,457.57,434.6,431.97],"gpu_temp":[68.57,67.39,66.42,66.55,65.77,65.18,67.77,68.63,68.61],"req_tput":[0.11,0.22,0.39,0.58,0.86,1.18,1.46,1.22,1.18],"ttft_p99":[204.06,358.28,674.93,1221.95,2421.1,4167.47,8068.26,55377.55,162836.17],"isl_avg":[100.08,100.07,100.03,100.07,100.05,100.07,100.07,100.08,100.08],"tok_per_joule":[0.2506,0.4807,0.8566,1.33,1.9232,2.6195,3.2592,2.8856,2.7997]},"tp4":{"lat_avg":[7115.64,7705.2,8663.69,11153.68,17194.14,26021.29,40967.65,73942.26,182116.92],"tput_per_gpu":[35.88,66.25,117.93,183.18,237.52,314.27,399.42,442.69,356.72],"out_tput_user":[148.37,138.38,127.46,101.62,66.62,42.99,26.38,14.34,7.22],"gpu_util":[98.25,98.48,98.54,98.8,99.01,99.79,99.82,99.9,99.97],"e2e_tput_user":[143.93,132.88,118.25,91.83,59.55,39.39,25.05,13.89,5.76],"osl_min":[1016,989,1011,1006,949,985,997,939,926],"osl_max":[1029,1026,1030,1028,1028,1039,1064,1038,1036],"prefill_tput_user":[460.32,349.97,208.83,130.13,81.37,60.71,57.2,55.73,13.07],"total_tput":[157.57,290.88,517.81,804.3,1042.97,1379.92,1753.8,1943.79,1566.31],"active_gpus":[4,4,4,4,4,4,4,4,4],"image_tput":[0.14,0.13,0.12,0.09,0.06,0.04,0.02,0.01,0.01],"itl_avg":[6.74,7.23,7.85,9.86,15.05,23.29,37.95,69.88,145.68],"ttft_avg":[220.23,312.76,627.91,1068.52,1800.4,2186.23,2133.55,2441.1,33059.03],"itl_p99":[6.8,7.39,8.27,10.7,16.58,25.19,39.71,71.79,219.09],"out_tput":[143.54,264.99,471.73,732.71,950.1,1257.1,1597.68,1770.76,1426.87],"duration":[713.46,386.38,217.17,223.67,344.85,521.51,820.64,1480.73,3675.03],"gpu_mem_gb":[40.67,40.67,40.74,40.74,40.74,40.74,40.74,40.74,40.74],"sm_util":[95.97,95.55,94.47,95.42,96.56,97.61,98.11,98.48,98.79],"osl_avg":[1024.1,1023.85,1024.45,1024.26,1023.89,1024.36,1024.31,1024.22,1024.18],"lat_p99":[7173.74,7745.91,8698.68,11202.25,17439.63,28714.39,48425.45,90187.46,248695.06],"gpu_power_active":[652.78,656.24,657.8,651.58,622.71,633.96,669.89,708.65,656.8],"gpu_temp":[63.65,66.81,66.82,66.87,65.83,63.32,63.2,66.18,65.66],"req_tput":[0.14,0.26,0.46,0.72,0.93,1.23,1.56,1.73,1.39],"ttft_p99":[236.99,432.2,800.98,1503.57,2965.01,5198.53,9923.75,19874.83,89010.58],"isl_avg":[100.07,100.05,100.07,100.08,100.09,100.08,100.09,100.08,100.09],"tok_per_joule":[0.2199,0.4038,0.7171,1.1245,1.5258,1.9829,2.385,2.4988,2.1725]},"concurrency":[1,2,4,8,16,32,64,128,256]};
+const C = { tp2:'#1e3a8a', tp4:'#f97316' };
+
+function chart(id, title, yLabel, key) {
+    new Chart(document.getElementById(id), {
+        type: 'line',
+        data: {
+            labels: D.concurrency,
+            datasets: [
+                { label:'TP2', data:D.tp2[key], borderColor:C.tp2, backgroundColor:C.tp2, fill:false, tension:.3, borderWidth:2, pointRadius:3 },
+                { label:'TP4', data:D.tp4[key], borderColor:C.tp4, backgroundColor:C.tp4, fill:false, tension:.3, borderWidth:2, pointRadius:3 }
+            ]
+        },
+        options: {
+            responsive:true, maintainAspectRatio:false,
+            interaction:{ mode:'index', intersect:false },
+            plugins:{
+                title:{ display:true, text:title, font:{ size:13, weight:'600' } },
+                legend:{ display:true, labels:{ boxWidth:12, font:{ size:11 } } }
+            },
+            scales:{
+                y:{ title:{ display:true, text:yLabel } },
+                x:{ title:{ display:true, text:'Concurrency' } }
+            }
+        }
+    });
+}
+
+chart('c_out_tput', 'Output Token Throughput', 'tokens/sec', 'out_tput');
+chart('c_total_tput', 'Total Token Throughput', 'tokens/sec', 'total_tput');
+chart('c_tput_per_gpu', 'Output Throughput per GPU', 'tokens/sec/GPU', 'tput_per_gpu');
+chart('c_out_tput_user', 'Output Throughput Per User', 'tokens/sec/user', 'out_tput_user');
+chart('c_e2e_tput_user', 'E2E Output Throughput Per User', 'tokens/sec/user', 'e2e_tput_user');
+chart('c_prefill_tput_user', 'Prefill Throughput Per User', 'tokens/sec/user', 'prefill_tput_user');
+chart('c_ttft_avg', 'TTFT (avg)', 'ms', 'ttft_avg');
+chart('c_ttft_p99', 'TTFT (P99)', 'ms', 'ttft_p99');
+chart('c_itl_avg', 'Inter Token Latency (avg)', 'ms', 'itl_avg');
+chart('c_itl_p99', 'Inter Token Latency (P99)', 'ms', 'itl_p99');
+chart('c_lat_avg', 'Request Latency (avg)', 'ms', 'lat_avg');
+chart('c_lat_p99', 'Request Latency (P99)', 'ms', 'lat_p99');
+chart('c_image_tput', 'Image Throughput', 'images/sec', 'image_tput');
+chart('c_req_tput', 'Request Throughput', 'requests/sec', 'req_tput');
+chart('c_osl_avg', 'Output Sequence Length (avg)', 'tokens', 'osl_avg');
+chart('c_osl_min', 'Output Sequence Length (min)', 'tokens', 'osl_min');
+chart('c_osl_max', 'Output Sequence Length (max)', 'tokens', 'osl_max');
+chart('c_isl_avg', 'Input Sequence Length (avg)', 'tokens', 'isl_avg');
+chart('c_gpu_power_active', 'GPU Power (active GPUs only)', 'Watts', 'gpu_power_active');
+chart('c_gpu_mem_gb', 'GPU Memory Used per GPU', 'GB', 'gpu_mem_gb');
+chart('c_gpu_util', 'GPU Utilization (mean)', '%', 'gpu_util');
+chart('c_sm_util', 'SM Utilization (mean)', '%', 'sm_util');
+chart('c_tok_per_joule', 'Energy Efficiency', 'tokens/Joule', 'tok_per_joule');
+chart('c_duration', 'Benchmark Duration', 'sec', 'duration');
+
+function clean(a) { return (a || []).filter(v => v !== null && v !== undefined); }
+function peak(a) {
+    const v = clean(a);
+    if (!v.length) return [null, null];
+    const m = Math.max(...v);
+    return [m, D.concurrency[a.indexOf(m)]];
+}
+function sweetSpot(out, ttft, itl, conc) {
+    const i = 3, j = 4;
+    return out[i].toFixed(0) + '-' + out[j].toFixed(0) + ' tok/s at conc ' + conc[i] + '-' + conc[j] +
+        ' (TTFT ' + ttft[i].toFixed(0) + '-' + ttft[j].toFixed(0) + 'ms, ITL ' + itl[i].toFixed(1) + '-' + itl[j].toFixed(1) + 'ms)';
+}
+
+const [p2, k2] = peak(D.tp2.out_tput);
+const [p4, k4] = peak(D.tp4.out_tput);
+const g2 = D.tp2.active_gpus[0] || 2;
+const g4 = D.tp4.active_gpus[0] || 4;
+
+const execItems = [
+    '<strong>TP2 Peak Output Throughput:</strong> ' + (p2 ? p2.toFixed(1) : 'N/A') + ' tok/s at concurrency ' + (k2 || 'N/A'),
+    '<strong>TP4 Peak Output Throughput:</strong> ' + (p4 ? p4.toFixed(1) : 'N/A') + ' tok/s at concurrency ' + (k4 || 'N/A'),
+    '<strong>TP2 Sweet Spot:</strong> ' + sweetSpot(D.tp2.out_tput, D.tp2.ttft_avg, D.tp2.itl_avg, D.concurrency),
+    '<strong>TP4 Sweet Spot:</strong> ' + sweetSpot(D.tp4.out_tput, D.tp4.ttft_avg, D.tp4.itl_avg, D.concurrency),
+    '<strong>Throughput-per-GPU:</strong> TP2 achieves ' + (p2 ? (p2 / g2).toFixed(1) : 'N/A') + ' tok/s/GPU vs TP4\'s ' + (p4 ? (p4 / g4).toFixed(1) : 'N/A') + ' tok/s/GPU'
+];
+
+document.getElementById('execGrid').innerHTML = execItems.map(s => '<div class="exec-item">' + s + '</div>').join('');
+
+const rows = [
+    ['Output tput (tok/s)', 'out_tput', 1],
+    ['Per-GPU tput (tok/s)', 'tput_per_gpu', 1],
+    ['Per-user tput (tok/s)', 'out_tput_user', 1],
+    ['TTFT avg (ms)', 'ttft_avg', 0],
+    ['TTFT P99 (ms)', 'ttft_p99', 0],
+    ['ITL avg (ms)', 'itl_avg', 2],
+    ['Request latency avg (ms)', 'lat_avg', 0],
+    ['OSL avg (tokens)', 'osl_avg', 1],
+    ['GPU power active (W)', 'gpu_power_active', 0],
+    ['Tokens per Joule', 'tok_per_joule', 3]
+];
+
+let html = '<thead><tr><th>Metric</th><th>TP</th>' +
+    D.concurrency.map(c => '<th>c' + c + '</th>').join('') + '</tr></thead><tbody>';
+rows.forEach(([label, key, dp]) => {
+    ['tp2', 'tp4'].forEach(tp => {
+        html += '<tr><td>' + (tp === 'tp2' ? label : '') + '</td>' +
+                '<td style="color:' + C[tp] + ';font-weight:600">' + tp.toUpperCase() + '</td>' +
+                D.concurrency.map((c, i) => {
+                    const v = D[tp][key][i];
+                    return '<td>' + (v === null || v === undefined ? '-' : v.toFixed(dp)) + '</td>';
+                }).join('') + '</tr>';
+    });
+});
+html += '</tbody>';
+document.getElementById('table').innerHTML = html;
+</script>
+</body>
+</html>
